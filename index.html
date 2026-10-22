@@ -1,0 +1,1247 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Echo Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0d0b; --ink:#ece4d6; --dim:#8a8173; --faint:#4a443c; --line:#2a2622; --panel:#15130fee;
+  --accent:#ff5b1f; --a:#e8b04a; --b:#45b8a9; --c:#e0607a; --d:#9c86f0;
+  --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace; --serif:'Instrument Serif',Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--mono);overflow:hidden;-webkit-font-smoothing:antialiased;user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+button{font:inherit;color:inherit}
+.lbl{font-size:10px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+.serif{font-family:var(--serif);font-weight:400}
+
+/* ---------- in-game HUD ---------- */
+#hud{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .4s}
+#hud.on{opacity:1}
+#tl{position:absolute;top:24px;left:30px;max-width:420px}
+#tl .name{font-family:var(--serif);font-size:44px;line-height:.95;margin-top:8px;letter-spacing:-.01em}
+#tl .hint{font-size:12px;color:var(--dim);margin-top:12px;line-height:1.6;max-width:360px}
+#tr{position:absolute;top:24px;right:30px;display:flex;gap:34px;text-align:right}
+#tr .v{font-size:30px;font-weight:500;font-variant-numeric:tabular-nums;margin-top:4px;line-height:1}
+#tr .v small{font-size:13px;color:var(--dim);font-weight:400}
+#dimv{color:var(--accent)}
+#dimv.d2{color:var(--ink)}
+#bottom{position:absolute;left:0;right:0;bottom:16px;display:flex;flex-direction:column;align-items:center;gap:10px}
+#timeline{display:flex;flex-direction:column;gap:3px;padding:10px 14px;border:1px solid var(--line);background:#0e0d0bcc}
+.lane{display:flex;align-items:center;gap:10px;height:17px}
+.lane .lab{width:34px;font-size:10px;letter-spacing:.12em;color:var(--dim);text-align:right}
+.lane.me .lab{color:var(--accent)}
+.cells{display:flex}
+.cell{width:var(--cw,20px);height:17px;border-left:1px solid var(--line);font-size:11px;line-height:17px;text-align:center;color:var(--ink);opacity:.75}
+.cell.past{opacity:.28}
+.cell.now{background:#ff5b1f22;box-shadow:inset 0 -2px 0 var(--accent);opacity:1}
+.lane.me .cell{color:var(--accent);opacity:1}
+.lane.me .cell.fut{opacity:.15}
+.cell.t{color:var(--d)}
+#keys{font-size:10.5px;color:var(--faint);letter-spacing:.06em}
+#keys b{color:var(--dim);font-weight:500}
+#toast{position:absolute;left:50%;transform:translate(-50%,8px);bottom:150px;font-size:12px;letter-spacing:.06em;padding:8px 14px;background:#1b1814;border-left:2px solid var(--accent);opacity:0;transition:.25s}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- panels ---------- */
+.screen{position:fixed;inset:0;display:none;z-index:5}
+.screen.on{display:flex}
+.btn{pointer-events:auto;cursor:pointer;background:none;border:1px solid var(--faint);padding:11px 18px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;transition:background .15s,border-color .15s,color .15s;text-align:left}
+.btn:hover,.btn:focus-visible{border-color:var(--ink);background:#ece4d60d;outline:none}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#120a05;font-weight:600}
+.btn.pri:hover{background:#ff7440}
+.btn kbd{font:inherit;opacity:.55;margin-left:10px}
+
+#menu{background:linear-gradient(90deg,#0e0d0bf2 0%,#0e0d0bd9 46%,#0e0d0b55 100%);padding:6vh 6vw;gap:6vw;align-items:stretch}
+#menu .left{flex:0 0 360px;display:flex;flex-direction:column}
+#menu h1{font-family:var(--serif);font-weight:400;font-size:112px;line-height:.82;margin:18px 0 0;letter-spacing:-.03em}
+#menu h1 i{color:var(--accent)}
+#menu .sub{color:var(--dim);font-size:13px;line-height:1.7;margin-top:22px;max-width:320px}
+#menu .left .btn{margin-top:auto}
+#menu .foot{margin-top:18px;font-size:10.5px;color:var(--faint);line-height:1.8}
+#worlds{flex:1;display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:22px;align-content:center;max-width:860px}
+.world h3{font-family:var(--serif);font-weight:400;font-size:26px;margin:6px 0 2px}
+.world p{font-size:11px;color:var(--dim);margin:0 0 14px;min-height:30px;line-height:1.5}
+.lv{display:flex;width:100%;align-items:center;gap:10px;padding:9px 10px;margin-bottom:5px;border:1px solid var(--line);background:#0e0d0bd9;cursor:pointer;text-align:left;font-size:12px;transition:.15s}
+.lv:hover{border-color:var(--ink)}
+.lv .n{color:var(--dim);width:20px;font-variant-numeric:tabular-nums}
+.lv .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lv .st{display:flex;gap:3px}
+.lv .st i{width:6px;height:6px;border:1px solid var(--faint)}
+.lv .st i.on{background:var(--accent);border-color:var(--accent)}
+.lv.locked{opacity:.3;cursor:not-allowed}
+.lv.cur{border-color:var(--accent)}
+
+.modal{align-items:center;justify-content:center;background:#0e0d0b99}
+.card{background:var(--panel);border:1px solid var(--line);padding:34px 38px;width:min(520px,92vw);position:relative}
+.card::before{content:"";position:absolute;left:-1px;top:-1px;width:44px;height:3px;background:var(--accent)}
+.card h2{font-family:var(--serif);font-weight:400;font-size:48px;margin:10px 0 14px;line-height:1}
+.card p{color:#cfc6b6;font-size:13px;line-height:1.75;margin:0 0 12px}
+.card .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.legend{display:flex;flex-wrap:wrap;gap:14px 22px;margin:18px 0 4px;font-size:11.5px;color:var(--dim)}
+.legend span{display:flex;align-items:center;gap:8px}
+.sw{width:16px;height:16px;display:inline-block;border:2px solid currentColor}
+
+.stars{display:flex;gap:12px;margin:6px 0 18px}
+.stars i{width:30px;height:30px;border:2px solid var(--faint);transform:scale(.6) rotate(-20deg);opacity:0}
+.stars i.show{animation:stamp .45s cubic-bezier(.2,1.6,.4,1) forwards}
+.stars i.on{background:var(--accent);border-color:var(--accent)}
+@keyframes stamp{to{transform:none;opacity:1}}
+.stats{display:flex;gap:30px;margin-bottom:6px}
+.stats .v{font-size:24px;margin-top:4px;font-variant-numeric:tabular-nums}
+#pause .btn{width:100%;margin-bottom:8px}
+@media (max-width:1280px){
+  #worlds{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 22px}
+  .world p{min-height:0}
+  #menu h1{font-size:92px}
+}
+@media (max-width:900px){
+  #menu{flex-direction:column;overflow:auto}
+  #menu .left{flex:none}
+  #menu h1{font-size:72px}
+  #worlds{grid-template-columns:repeat(2,1fr)}
+  #tl .name{font-size:32px}
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="tl">
+    <div class="lbl" id="lvIdx"></div>
+    <div class="name" id="lvName"></div>
+    <div class="hint" id="lvHint"></div>
+  </div>
+  <div id="tr">
+    <div id="dimBox"><div class="lbl">Boyut</div><div class="v" id="dimv">2D</div></div>
+    <div><div class="lbl">Döngü</div><div class="v" id="loopv"></div></div>
+    <div><div class="lbl">Adım</div><div class="v" id="tickv"></div></div>
+  </div>
+  <div id="toast"></div>
+  <div id="bottom">
+    <div id="timeline"></div>
+    <div id="keys"><b>←↑→↓</b> hareket · <b>SPACE</b> bekle · <b id="kq">Q</b><span id="kqt"> boyut · </span><b>ENTER</b> döngüyü kaydet · <b>Z</b> geri al · <b>R</b> döngüyü sıfırla · <b>ESC</b> menü · <b>M</b> ses</div>
+  </div>
+</div>
+
+<div id="menu" class="screen on">
+  <div class="left">
+    <div class="lbl">Bir zaman döngüsü bulmacası</div>
+    <h1>Echo<br><i>Loop</i></h1>
+    <div class="sub">Her döngüde geçmişteki halin, yaptığın her hamleyi aynen tekrarlar. Plakaları onlar tutar, kapılardan sen geçersin. Bazen de dünyaya başka bir boyuttan bakman gerekir.</div>
+    <button class="btn pri" id="contBtn">Devam et</button>
+    <div class="foot">20 bölüm · 4 bölge · ilerleme bu tarayıcıda saklanır</div>
+  </div>
+  <div id="worlds"></div>
+</div>
+
+<div id="intro" class="screen modal">
+  <div class="card">
+    <div class="lbl" id="inLbl">Yeni mekanik</div>
+    <h2 id="inTitle"></h2>
+    <div id="inBody"></div>
+    <div class="btns"><button class="btn pri" id="inGo">Anladım <kbd>⏎</kbd></button></div>
+  </div>
+</div>
+
+<div id="win" class="screen modal">
+  <div class="card">
+    <div class="lbl" id="wLbl">Döngü kapandı</div>
+    <h2 id="wTitle">Çözüldü</h2>
+    <div class="stars" id="wStars"><i></i><i></i><i></i></div>
+    <div class="stats">
+      <div><div class="lbl">Döngü</div><div class="v" id="wLoops"></div></div>
+      <div><div class="lbl">Hedef</div><div class="v" id="wPar"></div></div>
+      <div><div class="lbl">Adım</div><div class="v" id="wTicks"></div></div>
+    </div>
+    <div class="btns">
+      <button class="btn pri" id="wNext">Sonraki <kbd>⏎</kbd></button>
+      <button class="btn" id="wRetry">Tekrar <kbd>R</kbd></button>
+      <button class="btn" id="wMenu">Menü <kbd>Esc</kbd></button>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="screen modal">
+  <div class="card" style="width:min(380px,92vw)">
+    <div class="lbl">Duraklatıldı</div>
+    <h2>Mola</h2>
+    <button class="btn pri" data-p="resume">Devam et <kbd>Esc</kbd></button>
+    <button class="btn" data-p="loop">Bu döngüyü sıfırla <kbd>R</kbd></button>
+    <button class="btn" data-p="level">Bölümü baştan başlat</button>
+    <button class="btn" data-p="solve">Çözümü izle (yıldız verilmez)</button>
+    <button class="btn" data-p="sound">Ses: açık</button>
+    <button class="btn" data-p="menu">Bölüm seçimi</button>
+  </div>
+</div>
+
+<script>
+//--SIM
+const DIRS = {U:[0,-1], D:[0,1], L:[-1,0], R:[1,0]};
+
+function parse(def){
+  const rows = def.map, w = Math.max(...rows.map(r => r.length)), h = rows.length;
+  const L = {w, h, g:[], plates:{}, doors:[], start:null, exit:null, limit:def.limit, dims:!!def.dims};
+  rows.forEach((r, y) => [...r.padEnd(w, ' ')].forEach((c, x) => {
+    let t = c;
+    if (c === 'P'){ L.start = {x, y}; t = '.'; }
+    else if (c === 'E') L.exit = {x, y};
+    else if (c >= 'a' && c <= 'd') (L.plates[c] = L.plates[c] || []).push({x, y});
+    else if ((c >= 'A' && c <= 'D') || (c >= '1' && c <= '4'))
+      L.doors.push({x, y, k: c >= 'A' ? c.toLowerCase() : 'abcd'[c-1], inv: c < 'A'});
+    L.g[y*w + x] = t;
+  }));
+  return L;
+}
+const tileAt = (L, x, y) => (x < 0 || y < 0 || x >= L.w || y >= L.h) ? ' ' : L.g[y*L.w + x];
+
+// a plate group is active while EVERY plate of its letter is covered (by anyone, in any dimension)
+function activeSet(L, ents){
+  const o = {};
+  for (const k in L.plates) o[k] = L.plates[k].every(p => ents.some(e => e.x === p.x && e.y === p.y));
+  return o;
+}
+function doorOpen(c, act){
+  if (c >= 'A' && c <= 'D') return !!act[c.toLowerCase()];
+  if (c >= '1' && c <= '4') return !act['abcd'[c-1]];
+  return true;
+}
+// '%' rise: solid in 2D, walkable in 3D.  '=' illusion bridge: walkable in 2D, a chasm in 3D.
+function standable(L, x, y, d){
+  const c = tileAt(L, x, y);
+  if (c === '#' || c === ' ') return false;
+  if (c === '%') return d === 1;
+  if (c === '=') return d === 0;
+  return true;
+}
+const canEnter = (L, x, y, d, act) => standable(L, x, y, d) && doorOpen(tileAt(L, x, y), act);
+// echoes are solid, but only to others in the same dimension
+const occupied = (ents, i, x, y, d) => ents.some((o, j) => j !== i && o.d === d && o.x === x && o.y === y);
+
+function newState(L, ghosts){
+  const ents = [];
+  for (let i = 0; i <= ghosts.length; i++) ents.push({x:L.start.x, y:L.start.y, d:0});
+  return {t:0, ghosts, ents, run:[]};
+}
+// everyone acts in loop order (oldest echo first, you last) against the door state at the start of the tick.
+// returns 1 for each entity whose action was blocked.
+function step(L, S, m){
+  const act = activeSet(L, S.ents), n = S.ghosts.length, res = [];
+  for (let i = 0; i <= n; i++){
+    const mm = i < n ? (S.ghosts[i][S.t] || 'W') : m, e = S.ents[i];
+    res.push(0);
+    if (mm === 'W') continue;
+    if (mm === 'T'){
+      const nd = 1 - e.d;
+      if (!L.dims || !standable(L, e.x, e.y, nd) || occupied(S.ents, i, e.x, e.y, nd)) res[i] = 1;
+      else e.d = nd;
+      continue;
+    }
+    const [dx, dy] = DIRS[mm], nx = e.x + dx, ny = e.y + dy;
+    if (!canEnter(L, nx, ny, e.d, act) || occupied(S.ents, i, nx, ny, e.d)){ res[i] = 1; continue; }
+    e.x = nx; e.y = ny;
+  }
+  S.run.push(m); S.t++;
+  return res;
+}
+const playerOf = S => S.ents[S.ents.length-1];
+const atExit = (L, S) => { const p = playerOf(S); return p.x === L.exit.x && p.y === L.exit.y; };
+//--/SIM
+
+//--LEVELS
+const WORLDS = [
+  {name:'Yankı', desc:'Geçmişin seninle birlikte yürür.'},
+  {name:'Ters', desc:'Bazı kapılar basıldıkça kapanır.'},
+  {name:'Derinlik', desc:'Düz görünen her şey düz değildir.'},
+  {name:'Yakınsama', desc:'Hepsi aynı anda.'},
+];
+const INTROS = {
+  echo:{t:'Yankı', b:`<p>Hamlelerin kaydedilir. <b>Enter</b>'a bastığında zaman başa sarar ve geçmişteki halin, bir <b>yankı</b> olarak aynı hamleleri aynı anda tekrarlar.</p><p>Plakaların üstünde biri durduğu sürece aynı renkteki kapılar açık kalır. Yankın plakayı tutsun, sen geç.</p>`,
+    legend:[['a','Plaka'],['A','Kapı'],['E','Çıkış']]},
+  solid:{t:'Katı yankılar', b:`<p>Yankıların gerçektir. İçlerinden geçemezsin, onlar da senin içinden geçemez.</p><p>Herkes sırayla hareket eder: önce en eski yankı, en son sen. Tek şeritlik bir koridorda <b>kimin önde yürüdüğü</b> her şeyi belirler.</p>`},
+  twin:{t:'İkiz plakalar', b:`<p>Aynı renkte birden fazla plaka varsa kapı ancak <b>hepsi aynı anda</b> basılıyken açılır.</p>`},
+  inverse:{t:'Ters kapı', b:`<p>Çizgili kapılar tersine çalışır: plakaları basılıyken <b>kapanır</b>, boşken açıktır.</p><p>Aynı plaka bir kapıyı açarken diğerini kilitleyebilir. Zamanlama artık bir silah.</p>`,
+    legend:[['a','Plaka'],['A','Kapı'],['1','Ters kapı']]},
+  blind:{t:'Kör kayıt', b:`<p>Kapalı bir kapıya yürümek de kaydedilir. Kayıt sırasında hiçbir şey olmaz ama bir sonraki döngüde o kapıyı <b>sen</b> açık tutarsan, yankın geçip gider.</p><p>Bazen geleceğe güvenmek zorundasın.</p>`},
+  dims:{t:'Boyut kayması', b:`<p><b>Q</b> ile dünyayı 2D ve 3D arasında değiştirirsin. Kayma bir adım sürer.</p><p><b>Basamaklar</b> (taralı) 2D'de duvardır, 3D'de üstüne çıkılır. <b>Yanılsama köprüleri</b> (tahta) yalnızca 2D'de vardır, 3D'de dipsiz bir boşluktur.</p><p>Üstünde durduğun zemin hedef boyutta yoksa kayamazsın.</p>`,
+    legend:[['%','Basamak · 3D'],['=','Köprü · 2D']]},
+  parallel:{t:'Paralel', b:`<p>Farklı boyuttaki yankılar birbirini görmez. 3D'deki bir yankının içinden 2D'de yürüyüp geçebilirsin.</p><p>Bir kaymayı engelleyen tek şey, hedef boyutta aynı karede başka birinin durmasıdır.</p>`},
+};
+const LEVELS = [
+  // ---------- I · YANKI ----------
+  {w:0, name:'İlk Yankı', intro:'echo', limit:12, hint:'Önce plakaya git ve Enter’a bas. Sonra kapıdan geç.',
+   sol:['RRRD','WRRRRRRR'], map:[
+    '##########',
+    '#P...A..E#',
+    '####a#####',
+    '##########']},
+  {w:0, name:'Sıra', intro:'solid', limit:10, hint:'Yankın yolunu tıkıyorsa önden sen yürü.',
+   sol:['WWRR','RRRWRRR'], map:[
+    '#########',
+    '#P.a.A.E#',
+    '#########']},
+  {w:0, name:'İki Uç', intro:'twin', limit:7, hint:'Yedi adım. Kimse boş beklemesin.',
+   sol:['LLLL','RRRR','DWWWDD'], map:[
+    '###########',
+    '#a...P...a#',
+    '#####.#####',
+    '#####A#####',
+    '#####E#####',
+    '###########']},
+  {w:0, name:'Kuyruk', limit:14, hint:'Koridor tek şeritli. Uzaktaki plakaya kim önce yürümeli?',
+   sol:['RRD','WRRRRRRRRDD','WWRRRRRR','WWWRRRRDDDWDD'], map:[
+    '###########',
+    '#P...B.a..#',
+    '###b#.###.#',
+    '#####.###a#',
+    '#####.#####',
+    '#####A#####',
+    '#####E#####',
+    '###########']},
+  {w:0, name:'Düğüm', limit:16, hint:'Plakalar yolun tam ortasında. Arkandan gelen biri lazım.',
+   sol:['WWWWRR','WWRRRWWRRRR','RRRRWWRRRRWRRR'], map:[
+    '##############',
+    '#P.a..A.b.B.E#',
+    '##############']},
+  // ---------- II · TERS ----------
+  {w:1, name:'Ters Kapı', intro:'inverse', limit:10, hint:'Yankın acele ederse kapı yüzüne kapanır.',
+   sol:['WDD','RRRRRRRRR'], map:[
+    '############',
+    '#P..1...A.E#',
+    '#.##########',
+    '#a##########',
+    '############']},
+  {w:1, name:'Nöbet', limit:11, leave:true, hint:'Bir plakayı tutmak kadar bırakmak da önemli.',
+   sol:['RDWWU','WRRRRRRRRR'], map:[
+    '############',
+    '#P...A...1E#',
+    '##a#########',
+    '############']},
+  {w:1, name:'Ritim', limit:14, leave:true, hint:'Bas, çek, yine bas. Adım sayacı senin metronomun.',
+   sol:['DDRWWRWWLWWR','RWWRRRRRRRRRRR'], map:[
+    '###############',
+    '#P.A..1..A..1E#',
+    '#.#############',
+    '#.a.###########',
+    '###############']},
+  {w:1, name:'Çift Kilit', limit:14, leave:true, hint:'B, b basılıyken açılır; 2 ise b boşken. İkisinden de geçmen gerek.',
+   sol:['RUWWD','RRRRRRRRU','RRRRRRRRRRRRR'], map:[
+    '##############',
+    '##a#####b#####',
+    '#P..A.2..B.1E#',
+    '##############']},
+  {w:1, name:'Kör Kayıt', intro:'blind', limit:10, hint:'Plakayı tutacak kimse yok… şimdilik.',
+   sol:['RRRRDDD','RRRWRRRRRR'], map:[
+    '###########',
+    '#P.a...B.E#',
+    '#####A#####',
+    '#####.#####',
+    '#####b#####',
+    '###########']},
+  // ---------- III · DERİNLİK ----------
+  {w:2, name:'Derinlik', intro:'dims', limit:14, dims:true, hint:'Q ile kay. Basamakları 3D’de, köprüyü 2D’de geç.',
+   sol:['RRTRRRRTRRR'], map:[
+    '############',
+    '#P..%%..==E#',
+    '############']},
+  {w:2, name:'Paralel', intro:'parallel', limit:6, dims:true, hint:'Altı adım. Arkandan gelmesini bekleyecek vaktin yok.',
+   sol:['TRR','RRRRRR'], map:[
+    '#########',
+    '#P.a.A.E#',
+    '#########']},
+  {w:2, name:'Geçiş Noktası', limit:10, dims:true, hint:'Plaka, iki boyut arasındaki tek basamak.',
+   sol:['WWTRRR','TRRRTRRRRR'], map:[
+    '###########',
+    '#P%%a==A.E#',
+    '###########']},
+  {w:2, name:'İkiz Boyut', limit:10, dims:true, hint:'Uzaktaki plakanın iki yanı da köprü.',
+   sol:['RRRRRT','TRR','WRRRRRRRRR'], map:[
+    '############',
+    '#P.a.=a=.AE#',
+    '############']},
+  {w:2, name:'Ters Boyut', limit:11, dims:true, hint:'Plaka köşede, ters kapı hemen önünde.',
+   sol:['TRRRR','RRRRDDLTLLL'], map:[
+    '#######',
+    '#P.1.a#',
+    '#####.#',
+    '#E%%A.#',
+    '#######']},
+  // ---------- IV · YAKINSAMA ----------
+  {w:3, name:'Kör Boyut', limit:8, dims:true, hint:'Sekiz adım, iki döngü. Plakayı kim tutacak?',
+   sol:['RRRRRR','TRRRWWDD'], map:[
+    '#########',
+    '#P.a.A.b#',
+    '####B####',
+    '####E####',
+    '#########']},
+  {w:3, name:'Dar Boğaz', limit:16, dims:true, hint:'Herkes kendi plakasında, doğru boyutta durmalı. Başlangıç karesi de kalabalık.',
+   sol:['TRRRT','WTRRRRRTRRT','WWTRRRRRTRRRRRRR'], map:[
+    '###############',
+    '#P.%a%.=b=.ABE#',
+    '###############']},
+  {w:3, name:'Kör Zincir', limit:15, hint:'Senin tuttuğun plaka iki yankıyı birden geçirir.',
+   sol:['RRRRRRRRD','RRRRRRRRRRRRD','WWRDWURRWWWWWDD'], map:[
+    '#############',
+    '#P...A...B..#',
+    '##a#C###b##c#',
+    '####E########',
+    '#############']},
+  {w:3, name:'Kapı Dansı', limit:16, leave:true, hint:'b’yi sen tut, sonra tam zamanında bırak.',
+   sol:['WWRRRRRRRRR','WWWRRRRRD','RDWWWULWWWWDD'], map:[
+    '############',
+    '#P..B...2.a#',
+    '#Ab###a#####',
+    '#E##########',
+    '############']},
+  {w:3, name:'Son Döngü', limit:18, dims:true, leave:true, hint:'On sekiz adım, bir saniye bile boşa yok. a, 1 kapısından herkes geçtikten sonra basılmalı.',
+   sol:['WWWWTRRWR','WWTRRRRRRRTRR','TRRRRRTRRRRRRRRRRR'], map:[
+    '###################',
+    '#P.%a%.1.=b=.A.B.E#',
+    '###################']},
+];
+//--/LEVELS
+
+// =====================================================================
+//  audio — tiny synth, everything generated
+// =====================================================================
+const Sfx = (() => {
+  let ac = null, out = null, muted = false, nbuf = null;
+  function init(){
+    if (ac) return;
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      out = ac.createGain(); out.gain.value = .55;
+      const comp = ac.createDynamicsCompressor(); out.connect(comp); comp.connect(ac.destination);
+      nbuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+      const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1;
+    } catch(e){ ac = null; }
+  }
+  function tone(f, dur, o = {}){
+    if (!ac || muted) return;
+    const t = ac.currentTime + (o.delay || 0), osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(f, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(o.vol || .1, t + (o.attack || .004));
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    osc.connect(g); g.connect(out); osc.start(t); osc.stop(t + dur + .05);
+  }
+  function noise(dur, o = {}){
+    if (!ac || muted) return;
+    const t = ac.currentTime + (o.delay || 0), src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = nbuf; f.type = o.type || 'bandpass'; f.Q.value = o.q || 1;
+    f.frequency.setValueAtTime(o.f || 1000, t);
+    if (o.to) f.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+    g.gain.setValueAtTime(o.vol || .08, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(out); src.start(t); src.stop(t + dur + .05);
+  }
+  return {init, tone, noise, toggle(){ muted = !muted; return muted; }, get muted(){ return muted; }};
+})();
+const PF = {a:523.25, b:659.25, c:783.99, d:987.77};
+const SND = {
+  move(){ Sfx.tone(300 + Math.random()*30, .07, {type:'triangle', vol:.07}); Sfx.noise(.04, {f:2500, vol:.025}); },
+  wait(){ Sfx.tone(210, .05, {vol:.035}); },
+  bump(){ Sfx.tone(120, .14, {type:'square', vol:.045, to:70}); Sfx.noise(.08, {f:300, vol:.06}); },
+  plateOn(k){ Sfx.tone(PF[k], .3, {vol:.07}); Sfx.tone(PF[k]*2, .25, {vol:.025, delay:.03}); },
+  plateOff(k){ Sfx.tone(PF[k], .18, {vol:.045, to:PF[k]*.7}); },
+  doorOpen(){ Sfx.noise(.32, {f:300, to:2600, vol:.06, q:2}); Sfx.tone(147, .3, {type:'triangle', vol:.05, to:220}); },
+  doorClose(){ Sfx.noise(.18, {f:2200, to:250, vol:.07, q:2}); Sfx.tone(90, .2, {type:'square', vol:.035, to:55}); },
+  shift(up){ Sfx.tone(up ? 140 : 880, .55, {type:'sawtooth', vol:.035, to:up ? 880 : 140});
+             Sfx.noise(.55, {f:up ? 400 : 4000, to:up ? 4000 : 400, q:6, vol:.06}); Sfx.tone(up ? 1320 : 330, .4, {vol:.03, delay:.35}); },
+  rewind(){ Sfx.tone(1400, .85, {type:'sawtooth', vol:.04, to:50}); Sfx.noise(.9, {f:6000, to:150, q:1.5, vol:.08}); Sfx.tone(55, .6, {type:'sine', vol:.12, delay:.8}); },
+  spawn(){ Sfx.tone(440, .25, {vol:.05}); Sfx.tone(660, .35, {vol:.04, delay:.06}); },
+  win(){ [392, 523.25, 659.25, 783.99, 1046.5].forEach((f, i) => Sfx.tone(f, .9, {type:'triangle', vol:.06, delay:i*.07})); Sfx.noise(1.2, {f:800, to:8000, vol:.04, q:.7}); },
+  star(i, on){ on ? Sfx.tone(660*Math.pow(1.26, i), .35, {vol:.08}) : Sfx.tone(180, .1, {type:'square', vol:.03}); Sfx.noise(.06, {f:3000, vol:.05}); },
+  ui(){ Sfx.tone(820, .035, {type:'square', vol:.02}); },
+  denied(){ Sfx.tone(160, .12, {type:'square', vol:.035}); Sfx.tone(120, .14, {type:'square', vol:.035, delay:.08}); },
+};
+
+// =====================================================================
+//  state
+// =====================================================================
+const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const PROG = 'echoloop.v2';
+let prog = {solved:{}, seen:{}, last:0};
+try { Object.assign(prog, JSON.parse(localStorage.getItem(PROG) || '{}')); } catch(e){}
+const save = () => { try { localStorage.setItem(PROG, JSON.stringify(prog)); } catch(e){} };
+
+let mode = 'menu';            // menu | intro | play | rewind | winfx | win | pause
+let li = 0, def, L, ghostRuns = [], S, hist = [], preview = [], watching = false, autoQ = [];
+let disp = [];                // per-entity display animation
+let doorVis = [];             // per-door open amount 0..1
+let parts = [], ripples = [];
+const fx = {shake:0, flash:0, glitch:0, rewind:null, win:null, sweep:null, spawn:0};
+const cam = {from:0, to:0, t0:-1e9, dur:720};
+const DUR = {hop:130};
+
+const WALL_H = .5, RISE_H = .3, DOOR_H = .42, PIT = 1.05, SKIRT = 1.4;
+const COL = {
+  bg:'#0e0d0b', floor:'#1a1815', floorLine:'#24211d', wallTop:'#2c2823', wallS1:'#1d1b18', wallS2:'#23201c',
+  riseTop:'#4a4034', riseS1:'#2f2820', riseS2:'#3a3128', riseHatch:'#7a6850',
+  ink:'#ece4d6', accent:'#ff5b1f', pit:'#060605', pitS1:'#15130f', pitS2:'#100e0c', plank:'#5b4b39', plankLine:'#3b3026',
+  k:{a:'#e8b04a', b:'#45b8a9', c:'#e0607a', d:'#9c86f0'}
+};
+const GLYPH = {U:'↑', D:'↓', L:'←', R:'→', W:'·', T:'◇'};
+
+function rgb(hex){ const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+function shade(hex, f, a = 1){ const [r, g, b] = rgb(hex); return `rgba(${Math.min(255, r*f)|0},${Math.min(255, g*f)|0},${Math.min(255, b*f)|0},${a})`; }
+const ease = t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const snap = S => S.ents.map(e => ({x:e.x, y:e.y, d:e.d}));
+const now = () => performance.now();
+
+// =====================================================================
+//  level flow
+// =====================================================================
+function unlocked(i){ return i === 0 || !!prog.solved[i-1] || !!prog.solved[i]; }
+
+function loadLevel(i, showIntro = true){
+  li = i; def = LEVELS[i]; L = parse(def);
+  prog.last = i; save();
+  ghostRuns = []; watching = false; autoQ = [];
+  parts = []; ripples = []; fx.win = null; fx.rewind = null;
+  doorVis = L.doors.map(() => 0);
+  cam.from = cam.to = 0; cam.t0 = -1e9;
+  rebuild([], true);
+  doorVis = L.doors.map((d, j) => doorTarget(j));
+  $('lvIdx').textContent = `${['I','II','III','IV'][def.w]} · ${WORLDS[def.w].name} — ${String(i+1).padStart(2, '0')}`;
+  $('lvName').textContent = def.name;
+  $('lvHint').textContent = def.hint;
+  $('dimBox').style.display = L.dims ? '' : 'none';
+  $('kq').style.display = $('kqt').style.display = L.dims ? '' : 'none';
+  hideScreens(); $('hud').classList.add('on');
+  if (showIntro && def.intro && !prog.seen[def.intro]) openIntro(def.intro);
+  else mode = 'play';
+}
+function rebuild(run, snapAnim){
+  S = newState(L, ghostRuns);
+  hist = [snap(S)];
+  for (const m of run){ step(L, S, m); hist.push(snap(S)); }
+  computePreview();
+  const prev = disp;
+  disp = S.ents.map((e, i) => {
+    const o = prev[i] && !snapAnim ? prev[i] : null;
+    const z = baseZ(e);
+    return o ? {fx:o.x, fy:o.y, fz:o.z, x:o.x, y:o.y, z:o.z, tx:e.x, ty:e.y, tz:z, p:0, hop:0, bx:0, by:0, bp:1, ring:0}
+             : {fx:e.x, fy:e.y, fz:z, x:e.x, y:e.y, z, tx:e.x, ty:e.y, tz:z, p:1, hop:0, bx:0, by:0, bp:1, ring:0};
+  });
+  const pd = playerOf(S).d;
+  if (pd !== cam.to) setCam(pd);
+  updateHUD();
+}
+function computePreview(){
+  // where the echoes will be if you just wait from here — an estimate, your moves can still change it
+  const T = {t:S.t, ghosts:S.ghosts, ents:S.ents.map(e => ({...e})), run:[]};
+  preview = S.ghosts.map((g, i) => [{x:T.ents[i].x, y:T.ents[i].y}]);
+  while (T.t < L.limit){
+    step(L, T, 'W');
+    S.ghosts.forEach((g, i) => preview[i].push({x:T.ents[i].x, y:T.ents[i].y}));
+  }
+}
+function baseZ(e){ return tileAt(L, e.x, e.y) === '%' && e.d === 1 ? RISE_H : 0; }
+function doorTarget(j){ const d = L.doors[j]; return doorOpen(tileAt(L, d.x, d.y), activeSet(L, S.ents)) ? 1 : 0; }
+function setCam(d){
+  const k = camK();
+  cam.from = k; cam.to = d; cam.t0 = now();
+  cam.dur = 720 * Math.abs(d - k) + 1;
+}
+function camK(){
+  if (mode === 'menu') return 1;
+  const p = clamp((now() - cam.t0)/cam.dur, 0, 1);
+  return cam.from + (cam.to - cam.from)*ease(p);
+}
+
+// ---------- actions ----------
+function act(m){
+  if (mode !== 'play') return;
+  if (S.t >= L.limit){ toast('Adım sınırı doldu. Enter ile kaydet ya da Z ile geri al.'); SND.denied(); return; }
+  if (m === 'T' && !L.dims){ toast('Bu bölümde boyut kayması yok.'); SND.denied(); return; }
+  const before = snap(S), actBefore = activeSet(L, S.ents), doorsBefore = L.doors.map((d, j) => doorTarget(j));
+  const t = S.t;
+  const res = step(L, S, m);
+  hist.push(snap(S));
+  const pi = S.ents.length - 1;
+
+  S.ents.forEach((e, i) => {
+    const D = disp[i], b = before[i], mv = i < pi ? (S.ghosts[i][t] || 'W') : m;
+    if (e.x !== b.x || e.y !== b.y){
+      D.fx = D.x; D.fy = D.y; D.fz = D.z; D.tx = e.x; D.ty = e.y; D.tz = baseZ(e); D.p = 0; D.hop = 1;
+      if (Math.random() < .7) dust(b.x + .5, b.y + .5, baseZ(b), 3, i === pi ? COL.accent : COL.ink);
+    } else if (res[i] && DIRS[mv]){
+      D.bx = DIRS[mv][0]; D.by = DIRS[mv][1]; D.bp = 0;
+    }
+    if (e.d !== b.d){
+      D.ring = 1; D.tz = baseZ(e); D.fz = D.z; D.p = 0;
+      burst(e.x + .5, e.y + .5, D.z + .3, 14, e.d ? COL.accent : COL.ink, 1.4);
+    }
+  });
+  const pr = res[pi];
+  if (pr){ SND.bump(); fx.shake = Math.max(fx.shake, 4); if (m === 'T') toast('Burada kayamazsın: zemin ya da kare hedef boyutta dolu.'); }
+  else if (m === 'W') SND.wait();
+  else if (m === 'T'){ SND.shift(playerOf(S).d === 1); setCam(playerOf(S).d); fx.sweep = {t0:now(), up:playerOf(S).d === 1}; }
+  else SND.move();
+
+  // plates
+  const actAfter = activeSet(L, S.ents);
+  for (const k in L.plates) for (const p of L.plates[k]){
+    const wasOn = before.some(e => e.x === p.x && e.y === p.y), isOn = S.ents.some(e => e.x === p.x && e.y === p.y);
+    if (isOn && !wasOn){ ripple(p.x + .5, p.y + .5, COL.k[k]); SND.plateOn(k); }
+    if (!isOn && wasOn) SND.plateOff(k);
+  }
+  L.doors.forEach((d, j) => {
+    const nt = doorTarget(j);
+    if (nt !== doorsBefore[j]){
+      nt ? SND.doorOpen() : SND.doorClose();
+      dust(d.x + .5, d.y + .5, .1, 10, COL.k[d.k], 1.2);
+      if (!nt) fx.shake = Math.max(fx.shake, 2.5);
+    }
+  });
+  computePreview(); updateHUD();
+  if (atExit(L, S)) win();
+}
+
+function commitLoop(){
+  if (mode !== 'play') return;
+  if (!S.run.length){ toast('Önce birkaç hamle yap.'); SND.denied(); return; }
+  if (ghostRuns.length >= 8){ toast('En fazla 8 yankı.'); SND.denied(); return; }
+  fx.rewind = {t0:now(), dur:950, hist:hist.slice(), n:S.ents.length};
+  ghostRuns.push(S.run.slice());
+  mode = 'rewind'; fx.glitch = 1; fx.flash = .35; fx.shake = 6;
+  SND.rewind();
+  setTimeout(() => {
+    fx.rewind = null; rebuild([], true);
+    if (cam.to !== 0) setCam(0);
+    fx.spawn = 1; fx.flash = .25; SND.spawn();
+    burst(L.start.x + .5, L.start.y + .5, .3, 26, COL.accent, 2);
+    ripple(L.start.x + .5, L.start.y + .5, COL.accent);
+    mode = 'play';
+    toast(`Yankı ${ghostRuns.length} kaydedildi`);
+  }, 950);
+}
+function undo(){
+  if (mode !== 'play') return;
+  if (S.run.length){ rebuild(S.run.slice(0, -1), false); SND.ui(); return; }
+  if (ghostRuns.length){
+    const run = ghostRuns.pop();
+    rebuild(run.slice(), true);
+    SND.rewind(); fx.glitch = .6;
+    toast(`Yankı ${ghostRuns.length + 1} geri alındı. Kaydı düzenleyebilirsin.`);
+  } else { SND.denied(); }
+}
+function resetLoop(){ if (mode === 'play' || mode === 'pause'){ rebuild([], true); setCam(0); fx.glitch = .4; SND.ui(); hideScreens(); mode = 'play'; } }
+function resetLevel(){ ghostRuns = []; resetLoop(); }
+
+function win(){
+  mode = 'winfx'; fx.win = {t0:now()};
+  SND.win(); fx.flash = .5; fx.shake = 5;
+  const e = L.exit;
+  for (let i = 0; i < 60; i++) setTimeout(() => burst(e.x + .5, e.y + .5, Math.random()*.8, 2, i % 3 ? COL.ink : COL.accent, 1.6), i*14);
+  const loops = ghostRuns.length + 1, par = def.sol.length;
+  const stars = loops <= par ? 3 : loops === par + 1 ? 2 : 1;
+  if (!watching){
+    prog.solved[li] = Math.max(prog.solved[li] || 0, stars); save();
+  }
+  setTimeout(() => {
+    mode = 'win';
+    $('wLbl').textContent = watching ? 'Çözüm izlendi' : `Döngü kapandı · ${String(li+1).padStart(2, '0')}`;
+    $('wTitle').textContent = watching ? def.name : ['', 'Çözüldü', 'İyi iş', 'Kusursuz'][stars];
+    $('wLoops').textContent = loops; $('wPar').textContent = par; $('wTicks').textContent = S.t + '/' + L.limit;
+    $('wNext').firstChild.textContent = li === LEVELS.length - 1 ? 'Bölümler ' : 'Sonraki ';
+    const st = [...$('wStars').children];
+    st.forEach(s => s.className = '');
+    showScreen('win');
+    st.forEach((s, i) => setTimeout(() => { s.className = 'show' + (!watching && i < stars ? ' on' : ''); SND.star(i, !watching && i < stars); }, 250 + i*230));
+  }, 1250);
+}
+
+function watchSolution(){
+  ghostRuns = def.sol.slice(0, -1).map(r => r.split(''));
+  rebuild([], true); setCam(0);
+  watching = true; autoQ = def.sol[def.sol.length - 1].split('');
+  hideScreens(); mode = 'play';
+  toast('Çözüm oynatılıyor…');
+  const tick = () => {
+    if (!watching || mode !== 'play' || !autoQ.length) return;
+    act(autoQ.shift());
+    setTimeout(tick, 260);
+  };
+  setTimeout(tick, 600);
+}
+
+// =====================================================================
+//  UI
+// =====================================================================
+let toastT = 0;
+function toast(s){ const t = $('toast'); t.textContent = s; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2400); }
+function hideScreens(){ document.querySelectorAll('.screen').forEach(s => s.classList.remove('on')); }
+function showScreen(id){ hideScreens(); $(id).classList.add('on'); }
+
+function updateHUD(){
+  $('loopv').innerHTML = `${String(ghostRuns.length + 1).padStart(2, '0')}<small> / ${String(def.sol.length).padStart(2, '0')}</small>`;
+  $('tickv').innerHTML = `${String(S.t).padStart(2, '0')}<small> / ${L.limit}</small>`;
+  const d = playerOf(S).d;
+  $('dimv').textContent = d ? '3D' : '2D'; $('dimv').className = 'v' + (d ? '' : ' d2');
+  // timeline: one lane per echo + yours
+  const cw = Math.max(12, Math.min(24, Math.floor((W - 160)/L.limit)));
+  const tl = $('timeline'); tl.style.setProperty('--cw', cw + 'px');
+  let h = '';
+  const lane = (lab, run, me) => {
+    h += `<div class="lane${me ? ' me' : ''}"><div class="lab">${lab}</div><div class="cells">`;
+    for (let t = 0; t < L.limit; t++){
+      const m = run[t];
+      const cls = ['cell', t < S.t ? 'past' : '', t === S.t ? 'now' : '', me && t >= S.t ? 'fut' : '', m === 'T' ? 't' : ''].join(' ');
+      h += `<div class="${cls}">${m ? GLYPH[m] : ''}</div>`;
+    }
+    h += '</div></div>';
+  };
+  ghostRuns.forEach((r, i) => lane('Y' + (i + 1), r, false));
+  lane('SEN', S.run, true);
+  tl.innerHTML = h;
+}
+
+function buildMenu(){
+  const box = $('worlds'); box.innerHTML = '';
+  WORLDS.forEach((w, wi) => {
+    const col = document.createElement('div'); col.className = 'world';
+    col.innerHTML = `<div class="lbl">${['I','II','III','IV'][wi]}</div><h3>${w.name}</h3><p>${w.desc}</p>`;
+    LEVELS.forEach((lv, i) => {
+      if (lv.w !== wi) return;
+      const b = document.createElement('button');
+      const ok = unlocked(i), st = prog.solved[i] || 0;
+      b.className = 'lv' + (ok ? '' : ' locked') + (i === prog.last ? ' cur' : '');
+      b.innerHTML = `<span class="n">${String(i+1).padStart(2, '0')}</span><span class="t">${ok ? lv.name : '—'}</span><span class="st">${[0,1,2].map(k => `<i class="${k < st ? 'on' : ''}"></i>`).join('')}</span>`;
+      b.onclick = () => { Sfx.init(); if (!ok){ SND.denied(); return; } SND.ui(); loadLevel(i); };
+      col.appendChild(b);
+    });
+    box.appendChild(col);
+  });
+  let next = LEVELS.findIndex((l, i) => !prog.solved[i]);
+  if (next < 0) next = prog.last;
+  $('contBtn').innerHTML = `${Object.keys(prog.solved).length ? 'Devam et' : 'Başla'} — ${String(next+1).padStart(2, '0')} ${LEVELS[next].name} <kbd>⏎</kbd>`;
+  $('contBtn').onclick = () => { Sfx.init(); SND.ui(); loadLevel(next); };
+}
+function openMenu(){
+  mode = 'menu'; watching = false; fx.win = null;
+  $('hud').classList.remove('on');
+  buildMenu(); showScreen('menu');
+  if (!def){ def = LEVELS[prog.last || 0]; L = parse(def); ghostRuns = []; rebuild([], true); doorVis = L.doors.map((d, j) => doorTarget(j)); }
+}
+function openIntro(key){
+  const I = INTROS[key];
+  $('inTitle').textContent = I.t;
+  let leg = '';
+  if (I.legend) leg = '<div class="legend">' + I.legend.map(([c, t]) => `<span>${legendSwatch(c)}${t}</span>`).join('') + '</div>';
+  $('inBody').innerHTML = I.b + leg;
+  mode = 'intro'; showScreen('intro');
+}
+function legendSwatch(c){
+  if (c === 'a') return `<i class="sw" style="color:var(--a);border-radius:50%"></i>`;
+  if (c === 'A') return `<i class="sw" style="color:var(--a);background:var(--a)"></i>`;
+  if (c === '1') return `<i class="sw" style="color:var(--a);background:repeating-linear-gradient(45deg,var(--a) 0 3px,transparent 3px 6px)"></i>`;
+  if (c === 'E') return `<i class="sw" style="color:var(--ink);outline:2px solid var(--accent);outline-offset:-7px"></i>`;
+  if (c === '%') return `<i class="sw" style="color:#7a6850;background:repeating-linear-gradient(-45deg,#7a6850 0 2px,#4a4034 2px 5px)"></i>`;
+  if (c === '=') return `<i class="sw" style="color:#5b4b39;background:repeating-linear-gradient(90deg,#5b4b39 0 4px,#3b3026 4px 5px)"></i>`;
+  return '';
+}
+$('inGo').onclick = () => { prog.seen[def.intro] = 1; save(); hideScreens(); mode = 'play'; SND.ui(); };
+$('wNext').onclick = () => { SND.ui(); li === LEVELS.length - 1 ? openMenu() : loadLevel(li + 1); };
+$('wRetry').onclick = () => { SND.ui(); loadLevel(li, false); };
+$('wMenu').onclick = () => { SND.ui(); openMenu(); };
+document.querySelectorAll('#pause [data-p]').forEach(b => b.onclick = () => {
+  SND.ui();
+  const p = b.dataset.p;
+  if (p === 'resume'){ hideScreens(); mode = 'play'; }
+  if (p === 'loop') resetLoop();
+  if (p === 'level') resetLevel();
+  if (p === 'solve') watchSolution();
+  if (p === 'sound'){ const m = Sfx.toggle(); b.textContent = 'Ses: ' + (m ? 'kapalı' : 'açık'); }
+  if (p === 'menu') openMenu();
+});
+
+addEventListener('keydown', e => {
+  Sfx.init();
+  const k = e.code;
+  if (k === 'KeyM'){ const m = Sfx.toggle(); toast(m ? 'Ses kapalı' : 'Ses açık'); document.querySelector('[data-p=sound]').textContent = 'Ses: ' + (m ? 'kapalı' : 'açık'); return; }
+  if (mode === 'menu'){ if (k === 'Enter') $('contBtn').click(); return; }
+  if (mode === 'intro'){ if (k === 'Enter' || k === 'Space' || k === 'Escape'){ e.preventDefault(); $('inGo').click(); } return; }
+  if (mode === 'win'){
+    if (k === 'Enter') $('wNext').click();
+    if (k === 'KeyR') $('wRetry').click();
+    if (k === 'Escape') $('wMenu').click();
+    return;
+  }
+  if (mode === 'pause'){ if (k === 'Escape'){ hideScreens(); mode = 'play'; } return; }
+  if (mode !== 'play') return;
+  if (k === 'Escape'){ watching = false; showScreen('pause'); mode = 'pause'; return; }
+  if (watching) return;
+  const map = {ArrowUp:'U', KeyW:'U', ArrowDown:'D', KeyS:'D', ArrowLeft:'L', KeyA:'L', ArrowRight:'R', KeyD:'R', Space:'W', KeyQ:'T', Tab:'T'};
+  if (map[k]){ e.preventDefault(); if (!e.repeat) act(map[k]); return; }
+  if (k === 'Enter'){ e.preventDefault(); commitLoop(); }
+  else if (k === 'KeyZ' || k === 'Backspace'){ e.preventDefault(); undo(); }
+  else if (k === 'KeyR'){ e.shiftKey ? resetLevel() : resetLoop(); }
+});
+
+// =====================================================================
+//  effects
+// =====================================================================
+function ripple(x, y, col){ ripples.push({x, y, t0:now(), col}); }
+function dust(x, y, z, n, col, sp = .6){
+  for (let i = 0; i < n; i++){
+    const a = Math.random()*Math.PI*2, v = Math.random()*sp;
+    parts.push({x, y, z, vx:Math.cos(a)*v, vy:Math.sin(a)*v, vz:Math.random()*1.2, life:.5 + Math.random()*.4, max:.9, col, g:3});
+  }
+}
+function burst(x, y, z, n, col, sp = 1){
+  for (let i = 0; i < n; i++){
+    const a = Math.random()*Math.PI*2, v = (.3 + Math.random())*sp;
+    parts.push({x, y, z, vx:Math.cos(a)*v, vy:Math.sin(a)*v, vz:1 + Math.random()*2.5*sp, life:.6 + Math.random()*.6, max:1.2, col, g:2.2});
+  }
+}
+
+// =====================================================================
+//  projection — one camera that tilts from a flat plan (2D) into a 3/4 view (3D)
+// =====================================================================
+let V = {};
+let area = {top:150, bottom:150};
+function setupView(k, t){
+  const sway = mode === 'menu' ? Math.sin(t/5200)*.3 : 0;
+  const yaw = -.58*k + sway, tilt = .84*k;
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), ct = Math.cos(tilt), st = Math.sin(tilt);
+  const Cx = L.w/2, Cy = L.h/2;
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const x of [0, L.w]) for (const y of [0, L.h]) for (const z of [-.5, WALL_H]){
+    const px = (x - Cx)*cy - (y - Cy)*sy, py = ((x - Cx)*sy + (y - Cy)*cy)*ct - z*st;
+    x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+  }
+  let left = 40, right = 40, top = area.top, bot = area.bottom;
+  if (mode === 'menu'){ left = Math.min(W*.42, 520); top = 60; bot = 60; }
+  const aw = W - left - right, ah = H - top - bot;
+  const s = Math.max(10, Math.min(aw/(x1 - x0), ah/(y1 - y0), 78));
+  V = {k, yaw, tilt, cy, sy, ct, st, Cx, Cy, s,
+       X0:left + aw/2 - (x0 + x1)/2*s, Y0:top + ah/2 - (y0 + y1)/2*s};
+}
+function P(x, y, z){
+  const dx = x - V.Cx, dy = y - V.Cy;
+  return [V.X0 + (dx*V.cy - dy*V.sy)*V.s, V.Y0 + ((dx*V.sy + dy*V.cy)*V.ct - z*V.st)*V.s];
+}
+const depthOf = (x, y) => (x - V.Cx)*V.sy + (y - V.Cy)*V.cy;
+// canvas transform that maps world (x,y) on the plane at height z straight to the screen
+function ground(z){
+  const {cy, sy, ct, st, s, Cx, Cy, X0, Y0} = V;
+  ctx.setTransform(DPR*cy*s, DPR*sy*ct*s, -DPR*sy*s, DPR*cy*ct*s,
+                   DPR*(X0 - (Cx*cy - Cy*sy)*s), DPR*(Y0 - ((Cx*sy + Cy*cy)*ct + z*st)*s));
+}
+const screen = () => ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+function poly(pts){ ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.closePath(); }
+
+const EDGES = [[0, 1, 0, -1], [1, 2, 1, 0], [2, 3, 0, 1], [3, 0, -1, 0]];
+function staticH(x, y){
+  const c = tileAt(L, x, y);
+  return c === '#' ? WALL_H : c === '%' ? RISE_H : 0;
+}
+function prism(x, y, z1, top, s1, s2, alpha, deco){
+  if (alpha <= 0) return;
+  const cs = [[x, y], [x+1, y], [x+1, y+1], [x, y+1]];
+  ctx.globalAlpha = alpha;
+  if (V.st > .002 && z1 > .002){
+    screen();
+    for (const [a, b, nx, ny] of EDGES){
+      if (nx*V.sy + ny*V.cy <= .01) continue;                 // facing away
+      if (staticH(x + nx, y + ny) >= z1 - .001) continue;     // hidden by a neighbour
+      const lit = nx*V.cy - ny*V.sy;
+      ctx.fillStyle = lit < 0 ? s2 : s1;
+      poly([P(cs[a][0], cs[a][1], 0), P(cs[b][0], cs[b][1], 0), P(cs[b][0], cs[b][1], z1), P(cs[a][0], cs[a][1], z1)]);
+      ctx.fill();
+    }
+  }
+  ground(z1);
+  ctx.fillStyle = top; ctx.fillRect(x, y, 1, 1);
+  if (deco) deco();
+  ctx.globalAlpha = 1;
+}
+
+// =====================================================================
+//  render
+// =====================================================================
+let grain, vign, scan;
+function makeTextures(){
+  grain = document.createElement('canvas'); grain.width = grain.height = 160;
+  const g = grain.getContext('2d'), id = g.createImageData(160, 160);
+  for (let i = 0; i < id.data.length; i += 4){ const v = Math.random()*255; id.data[i] = id.data[i+1] = id.data[i+2] = v; id.data[i+3] = 255; }
+  g.putImageData(id, 0, 0);
+  scan = document.createElement('canvas'); scan.width = 4; scan.height = 4;
+  const sc = scan.getContext('2d'); sc.fillStyle = 'rgba(0,0,0,.5)'; sc.fillRect(0, 0, 4, 1);
+}
+function resize(){
+  DPR = Math.min(2, devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  cv.width = W*DPR; cv.height = H*DPR;
+  vign = ctx.createRadialGradient(W/2, H/2, Math.min(W, H)*.35, W/2, H/2, Math.max(W, H)*.75);
+  vign.addColorStop(0, 'rgba(0,0,0,0)'); vign.addColorStop(1, 'rgba(0,0,0,.55)');
+  if (S && mode !== 'menu') updateHUD();
+}
+addEventListener('resize', resize);
+
+let lastT = now();
+function frame(){
+  const t = now(), dt = Math.min(.05, (t - lastT)/1000); lastT = t;
+  requestAnimationFrame(frame);
+  if (!L) return;
+  const lanes = ghostRuns.length + 1;
+  area.top = 150; area.bottom = lanes*20 + 92;
+
+  // animation state
+  for (const D of disp){
+    D.p = Math.min(1, D.p + dt*1000/DUR.hop);
+    const e = ease(D.p);
+    D.x = D.fx + (D.tx - D.fx)*e; D.y = D.fy + (D.ty - D.fy)*e; D.z = D.fz + (D.tz - D.fz)*e;
+    D.bp = Math.min(1, D.bp + dt*6);
+    D.ring = Math.max(0, D.ring - dt*2.2);
+  }
+  L.doors.forEach((d, j) => { const tg = doorTarget(j); doorVis[j] += (tg - doorVis[j])*Math.min(1, dt*12); });
+  for (const q of parts){ q.x += q.vx*dt; q.y += q.vy*dt; q.z += q.vz*dt; q.vz -= q.g*dt; q.vx *= .96; q.vy *= .96; if (q.z < 0){ q.z = 0; q.vz *= -.3; } q.life -= dt; }
+  parts = parts.filter(q => q.life > 0);
+  ripples = ripples.filter(r => t - r.t0 < 900);
+  fx.shake *= Math.pow(.004, dt); fx.flash = Math.max(0, fx.flash - dt*1.6); fx.glitch = Math.max(0, fx.glitch - dt*1.1); fx.spawn = Math.max(0, fx.spawn - dt*2);
+
+  const k = camK();
+  setupView(k, t);
+  if (fx.shake > .05){ V.X0 += (Math.random() - .5)*fx.shake; V.Y0 += (Math.random() - .5)*fx.shake; }
+
+  // ----- background -----
+  screen();
+  ctx.fillStyle = COL.bg; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(236,228,214,.025)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = (V.X0 % 48); x < W; x += 48){ ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); }
+  for (let y = (V.Y0 % 48); y < H; y += 48){ ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); }
+  ctx.stroke();
+  if (mode !== 'menu'){
+    ctx.font = `italic ${Math.round(H*.42)}px 'Instrument Serif', Georgia, serif`;
+    ctx.fillStyle = 'rgba(236,228,214,.028)'; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(String(li + 1).padStart(2, '0'), W - 20, H*.98);
+  }
+
+  drawWorld(k, t);
+  drawPost(t);
+}
+
+function entityPos(i){
+  // during a rewind everyone runs backwards along the loop that just ended
+  if (fx.rewind){
+    const R = fx.rewind, p = ease(clamp((now() - R.t0)/R.dur, 0, 1)), T = R.hist.length - 1;
+    const u = (1 - p)*T, a = Math.floor(u), f = u - a, A = R.hist[a][i], B = R.hist[Math.min(T, a + 1)][i];
+    if (!A) return null;
+    return {x:A.x + (B.x - A.x)*f, y:A.y + (B.y - A.y)*f, z:0, d:A.d, hop:0};
+  }
+  const D = disp[i], e = S.ents[i];
+  const hop = Math.sin(Math.PI*D.p)*.22*(D.p < 1 ? 1 : 0);
+  const bump = Math.sin(Math.PI*D.bp)*.16;
+  return {x:D.x + D.bx*bump, y:D.y + D.by*bump, z:D.z, d:e.d, hop, ring:D.ring};
+}
+
+function drawWorld(k, t){
+  const view = k > .5 ? 1 : 0, ents = S.ents, pi = ents.length - 1;
+  const act = activeSet(L, ents);
+
+  // ----- ground layer -----
+  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++){
+    const c = tileAt(L, x, y);
+    if (c === '#' || c === ' ') continue;
+    if (c === '='){ drawPit(x, y, k); continue; }
+    ground(0);
+    ctx.fillStyle = COL.floor; ctx.fillRect(x, y, 1, 1);
+    ctx.strokeStyle = COL.floorLine; ctx.lineWidth = 1/V.s; ctx.strokeRect(x + .02, y + .02, .96, .96);
+  }
+  // the level is a slab of rock: its outer skirt hides the bottoms of the chasms
+  if (V.st > .002){
+    screen();
+    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++){
+      if (tileAt(L, x, y) === ' ') continue;
+      for (const [a, b, nx, ny] of EDGES){
+        if (nx*V.sy + ny*V.cy <= .01 || tileAt(L, x + nx, y + ny) !== ' ') continue;
+        const cs = [[x, y], [x+1, y], [x+1, y+1], [x, y+1]];
+        const lit = nx*V.cy - ny*V.sy;
+        const g = ctx.createLinearGradient(...P(x + .5, y + .5, 0), ...P(x + .5, y + .5, -SKIRT));
+        g.addColorStop(0, lit < 0 ? '#1a1815' : '#141210'); g.addColorStop(1, 'rgba(14,13,11,0)');
+        ctx.fillStyle = g;
+        poly([P(cs[a][0], cs[a][1], 0), P(cs[b][0], cs[b][1], 0), P(cs[b][0], cs[b][1], -SKIRT), P(cs[a][0], cs[a][1], -SKIRT)]);
+        ctx.fill();
+      }
+    }
+  }
+  // plates
+  for (const key in L.plates) for (const p of L.plates[key]){
+    const on = ents.some(e => e.x === p.x && e.y === p.y), col = COL.k[key];
+    ground(on ? -.015 : .012);
+    ctx.lineWidth = 2.2/V.s; ctx.strokeStyle = col;
+    ctx.fillStyle = on ? shade(col, 1, .38) : shade(col, .25, .6);
+    roundRect(p.x + .15, p.y + .15, .7, .7, .08); ctx.fill(); ctx.stroke();
+    glyph(key, p.x + .5, p.y + .5, .16, on ? COL.ink : col);
+    if (on){ ctx.globalAlpha = .18 + .08*Math.sin(t/180); ctx.fillStyle = col; roundRect(p.x + .05, p.y + .05, .9, .9, .1); ctx.fill(); ctx.globalAlpha = 1; }
+  }
+  // exit portal
+  {
+    const e = L.exit; ground(.01);
+    ctx.save(); ctx.translate(e.x + .5, e.y + .5);
+    for (let i = 0; i < 3; i++){
+      ctx.save(); ctx.rotate(t/1400*(i % 2 ? -1 : 1) + i);
+      const r = .34 - i*.1; ctx.strokeStyle = i ? COL.ink : COL.accent; ctx.globalAlpha = .9 - i*.25; ctx.lineWidth = (i ? 1.2 : 2.2)/V.s;
+      ctx.strokeRect(-r, -r, r*2, r*2); ctx.restore();
+    }
+    ctx.globalAlpha = .5 + .3*Math.sin(t/300); ctx.fillStyle = COL.accent; ctx.fillRect(-.06, -.06, .12, .12);
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  // door sills
+  L.doors.forEach((d, j) => {
+    ground(.005);
+    ctx.strokeStyle = shade(COL.k[d.k], 1, .25 + .5*doorVis[j]); ctx.lineWidth = 1.6/V.s; ctx.setLineDash([.08, .06]);
+    ctx.strokeRect(d.x + .1, d.y + .1, .8, .8); ctx.setLineDash([]);
+  });
+  // ripples
+  for (const r of ripples){
+    const p = (t - r.t0)/900; ground(.02);
+    ctx.strokeStyle = r.col; ctx.globalAlpha = (1 - p)*.8; ctx.lineWidth = 3/V.s*(1 - p) + .5/V.s;
+    ctx.beginPath(); ctx.arc(r.x, r.y, .2 + p*.9, 0, Math.PI*2); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  // echo forecasts: dotted paths of where each echo is headed
+  if (mode === 'play' || mode === 'winfx'){
+    preview.forEach((pts, i) => {
+      if (pts.length < 2) return;
+      ground(.03);
+      ctx.strokeStyle = 'rgba(236,228,214,.22)'; ctx.lineWidth = 1.5/V.s; ctx.setLineDash([.07, .09]);
+      ctx.beginPath(); ctx.moveTo(pts[0].x + .5, pts[0].y + .5);
+      for (const q of pts) ctx.lineTo(q.x + .5, q.y + .5);
+      ctx.stroke(); ctx.setLineDash([]);
+      const end = pts[pts.length - 1];
+      ctx.strokeStyle = 'rgba(236,228,214,.35)'; ctx.strokeRect(end.x + .38, end.y + .38, .24, .24);
+    });
+  }
+  // shadows
+  for (let i = 0; i <= pi; i++){
+    const e = entityPos(i); if (!e) continue;
+    ground(e.z + .005);
+    ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.globalAlpha = e.d === view ? 1 : .4;
+    ctx.beginPath(); ctx.ellipse(e.x + .5, e.y + .5, .27 - e.hop*.3, .27 - e.hop*.3, 0, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
+  }
+
+  // ----- sorted layer: anything with height -----
+  const items = [];
+  const focus = [];
+  for (let i = 0; i <= pi; i++){ const e = entityPos(i); if (e) focus.push(e); }
+  for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++){
+    const c = tileAt(L, x, y);
+    const dep = depthOf(x + .5, y + .5);
+    if (c === '#'){
+      if (!hasOpenNeighbour(x, y)) continue;
+      // walls in front of someone turn see-through so nobody is ever hidden
+      let a = 1;
+      for (const e of focus){
+        const de = depthOf(e.x + .5, e.y + .5);
+        if (dep > de && dep - de < 1.6 && Math.hypot(e.x - x, e.y - y) < 1.7) a = Math.min(a, .28 + (1 - k)*.72);
+      }
+      items.push({d:dep, f:() => prism(x, y, WALL_H, COL.wallTop, COL.wallS1, COL.wallS2, a, () => {
+        ctx.strokeStyle = 'rgba(236,228,214,.05)'; ctx.lineWidth = 1/V.s; ctx.strokeRect(x + .03, y + .03, .94, .94);
+      })});
+    } else if (c === '%'){
+      items.push({d:dep, f:() => prism(x, y, RISE_H, COL.riseTop, COL.riseS1, COL.riseS2, 1, () => hatch(x, y))});
+    }
+  }
+  L.doors.forEach((d, j) => {
+    const h = DOOR_H*(1 - doorVis[j]);
+    if (h < .01) return;
+    const col = COL.k[d.k];
+    items.push({d:depthOf(d.x + .5, d.y + .5), f:() => prism(d.x, d.y, h, col, shade(col, .45), shade(col, .62), .35 + .65*(1 - doorVis[j]), () => {
+      if (d.inv){
+        ctx.save(); ctx.beginPath(); ctx.rect(d.x, d.y, 1, 1); ctx.clip();
+        ctx.strokeStyle = shade(col, .35); ctx.lineWidth = .09;
+        for (let s = -1; s < 1.2; s += .22){ ctx.beginPath(); ctx.moveTo(d.x + s, d.y); ctx.lineTo(d.x + s + 1, d.y + 1); ctx.stroke(); }
+        ctx.restore();
+      } else {
+        ctx.fillStyle = shade(col, .55); ctx.fillRect(d.x + .44, d.y + .12, .12, .76);
+      }
+      glyphTag(d, col);
+    })});
+  });
+  // exit beam
+  {
+    const e = L.exit;
+    items.push({d:depthOf(e.x + .5, e.y + .5) + .02, f:() => {
+      const boost = fx.win ? clamp((now() - fx.win.t0)/600, 0, 1) : 0;
+      const hgt = (1.6 + boost*3)*k + .001;
+      screen();
+      const [bx, by] = P(e.x + .5, e.y + .5, 0), [, ty] = P(e.x + .5, e.y + .5, hgt);
+      const w = V.s*(.3 + boost*.25);
+      const gr = ctx.createLinearGradient(0, by, 0, ty);
+      gr.addColorStop(0, `rgba(255,91,31,${.35 + boost*.5})`); gr.addColorStop(1, 'rgba(255,91,31,0)');
+      ctx.fillStyle = gr; ctx.globalCompositeOperation = 'lighter';
+      ctx.fillRect(bx - w/2, ty, w, by - ty);
+      ctx.fillStyle = `rgba(236,228,214,${.15 + boost*.5})`; ctx.fillRect(bx - w/8, ty, w/4, by - ty);
+      ctx.globalCompositeOperation = 'source-over';
+    }});
+  }
+  // several people on one square (everyone at the start): fan the older echoes out behind you
+  const stackAt = {};
+  for (let i = pi; i >= 0; i--){
+    const e = entityPos(i); if (!e) continue;
+    const key = Math.round(e.x) + ',' + Math.round(e.y) + ',' + e.d;
+    e.stack = stackAt[key] || 0; stackAt[key] = e.stack + 1;
+    items.push({d:depthOf(e.x + .5, e.y + .5) + .05 - e.stack*.001, f:() => drawEntity(i, e, view, t)});
+  }
+  items.sort((a, b) => a.d - b.d);
+  for (const it of items) it.f();
+
+  // particles
+  screen(); ctx.globalCompositeOperation = 'lighter';
+  for (const q of parts){
+    const [sx, sy] = P(q.x, q.y, q.z), a = clamp(q.life/q.max, 0, 1);
+    ctx.globalAlpha = a; ctx.fillStyle = q.col; const r = Math.max(1.2, V.s*.035);
+    ctx.fillRect(sx - r/2, sy - r/2, r, r);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+
+function hasOpenNeighbour(x, y){
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){
+    const c = tileAt(L, x + dx, y + dy);
+    if (c !== '#' && c !== ' ') return true;
+  }
+  return false;
+}
+function roundRect(x, y, w, h, r){ ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+// each plate colour also has its own shape, so colour is never the only cue
+function glyph(k, cx, cy, r, col){
+  ctx.fillStyle = col; ctx.beginPath();
+  if (k === 'a') ctx.arc(cx, cy, r, 0, Math.PI*2);
+  else if (k === 'b'){ ctx.moveTo(cx, cy - r*1.1); ctx.lineTo(cx + r, cy + r*.8); ctx.lineTo(cx - r, cy + r*.8); }
+  else if (k === 'c') ctx.rect(cx - r*.85, cy - r*.85, r*1.7, r*1.7);
+  else { ctx.moveTo(cx, cy - r*1.2); ctx.lineTo(cx + r, cy); ctx.lineTo(cx, cy + r*1.2); ctx.lineTo(cx - r, cy); }
+  ctx.closePath(); ctx.fill();
+}
+function glyphTag(d, col){
+  ctx.fillStyle = 'rgba(14,13,11,.75)'; roundRect(d.x + .32, d.y + .32, .36, .36, .06); ctx.fill();
+  glyph(d.k, d.x + .5, d.y + .5, .1, col);
+}
+function hatch(x, y){
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, 1, 1); ctx.clip();
+  ctx.strokeStyle = COL.riseHatch; ctx.lineWidth = 1.4/V.s;
+  for (let s = -1; s < 1.1; s += .14){ ctx.beginPath(); ctx.moveTo(x + s, y + 1); ctx.lineTo(x + s + 1, y); ctx.stroke(); }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(236,228,214,.18)'; ctx.lineWidth = 1.2/V.s; ctx.strokeRect(x + .03, y + .03, .94, .94);
+}
+function drawPit(x, y, k){
+  const depth = PIT*k;
+  if (k > .01){
+    ground(-depth); ctx.fillStyle = COL.pit; ctx.fillRect(x, y, 1, 1);
+    screen();
+    const cs = [[x, y], [x+1, y], [x+1, y+1], [x, y+1]];
+    for (const [a, b, nx, ny] of EDGES){
+      if (nx*V.sy + ny*V.cy >= -.01) continue;      // only the far walls of the hole are visible
+      if (tileAt(L, x + nx, y + ny) === '=') continue;
+      ctx.fillStyle = (nx*V.cy - ny*V.sy) < 0 ? COL.pitS1 : COL.pitS2;
+      poly([P(cs[a][0], cs[a][1], 0), P(cs[b][0], cs[b][1], 0), P(cs[b][0], cs[b][1], -depth), P(cs[a][0], cs[a][1], -depth)]);
+      ctx.fill();
+    }
+  }
+  // the bridge itself only exists in the flat world
+  const a = 1 - k;
+  ground(0);
+  if (a > .01){
+    ctx.globalAlpha = a;
+    ctx.fillStyle = COL.plank; ctx.fillRect(x, y + .06, 1, .88);
+    ctx.strokeStyle = COL.plankLine; ctx.lineWidth = 1.6/V.s;
+    for (let i = 1; i < 5; i++){ ctx.beginPath(); ctx.moveTo(x + i*.2, y + .06); ctx.lineTo(x + i*.2, y + .94); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = `rgba(236,228,214,${.06 + .12*k})`; ctx.lineWidth = 1/V.s; ctx.setLineDash([.06, .06]);
+  ctx.strokeRect(x + .02, y + .02, .96, .96); ctx.setLineDash([]);
+}
+
+function drawEntity(i, e, view, t){
+  const pi = S.ents.length - 1, isP = i === pi && !fx.rewind || (fx.rewind && i === fx.rewind.n - 1);
+  const other = e.d !== view;
+  const lift = fx.win && isP ? ease(clamp((now() - fx.win.t0)/1100, 0, 1))*1.4*Math.max(.3, V.k) : 0;
+  const z = e.z + .26 + e.hop + lift;
+  screen();
+  let [sx, sy] = P(e.x + .5, e.y + .5, z);
+  const r = V.s*.23*(fx.win && isP ? 1 + lift*.1 : 1);
+  if (e.stack){ sx -= e.stack*r*.55; sy -= e.stack*r*.4; }
+  ctx.globalAlpha = other ? .32 : 1;
+  if (isP){
+    const g = ctx.createRadialGradient(sx - r*.35, sy - r*.4, r*.1, sx, sy, r);
+    g.addColorStop(0, '#ffb08a'); g.addColorStop(.45, COL.accent); g.addColorStop(1, '#a8320a');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill();
+    if (fx.spawn > 0){ ctx.strokeStyle = COL.accent; ctx.globalAlpha = fx.spawn; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, r*(1 + (1 - fx.spawn)*3), 0, Math.PI*2); ctx.stroke(); ctx.globalAlpha = 1; }
+  } else {
+    ctx.fillStyle = 'rgba(236,228,214,.13)'; ctx.strokeStyle = COL.ink; ctx.lineWidth = 1.6;
+    if (other) ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(sx, sy, r*.92, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = COL.ink; ctx.font = `500 ${Math.max(9, Math.round(r*.8))}px 'IBM Plex Mono', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(i + 1, sx, sy + 1);
+  }
+  // dimension marker: a thin halo for anyone currently in 3D
+  if (e.d === 1){
+    ctx.strokeStyle = isP ? '#ffd2bd' : 'rgba(236,228,214,.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(sx, sy + r*.15, r*1.35, r*.45, 0, 0, Math.PI*2); ctx.stroke();
+  }
+  if (e.ring > 0){
+    ctx.strokeStyle = isP ? COL.accent : COL.ink; ctx.globalAlpha = e.ring; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy, r*(1 + (1 - e.ring)*2.2), 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPost(t){
+  screen();
+  // dimension sweep: a bright scan line that crosses the screen during a shift
+  if (fx.sweep){
+    const p = (t - fx.sweep.t0)/650;
+    if (p >= 1) fx.sweep = null;
+    else {
+      const y = fx.sweep.up ? H*(1 - p) : H*p;
+      const g = ctx.createLinearGradient(0, y - 90, 0, y + 90);
+      g.addColorStop(0, 'rgba(255,91,31,0)'); g.addColorStop(.5, `rgba(255,140,90,${.22*(1 - p)})`); g.addColorStop(1, 'rgba(255,91,31,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, y - 90, W, 180);
+      ctx.fillStyle = `rgba(255,230,215,${.7*(1 - p)})`; ctx.fillRect(0, y, W, 1.5);
+    }
+  }
+  // rewind: tape-style tearing and a timecode running backwards
+  if (fx.glitch > 0 || fx.rewind){
+    const g = fx.rewind ? .8 + Math.random()*.2 : fx.glitch;
+    const n = 6 + (g*12 | 0);
+    for (let i = 0; i < n; i++){
+      const y = Math.random()*H, h = 4 + Math.random()*36*g, dx = (Math.random() - .5)*70*g;
+      ctx.drawImage(cv, 0, y*DPR, W*DPR, h*DPR, dx, y, W, h);
+    }
+    ctx.globalAlpha = .35*g; ctx.fillStyle = ctx.createPattern(scan, 'repeat'); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    if (fx.rewind){
+      const R = fx.rewind, p = clamp((t - R.t0)/R.dur, 0, 1), T = R.hist.length - 1;
+      ctx.fillStyle = 'rgba(255,91,31,.08)'; ctx.fillRect(0, 0, W, H);
+      ctx.font = `500 13px 'IBM Plex Mono', monospace`; ctx.fillStyle = COL.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(`◀◀  GERİ SARILIYOR   T-${String(Math.round((1 - p)*T)).padStart(2, '0')}`, 30, H/2 - 8);
+      ctx.font = `italic ${Math.round(Math.min(W, H)*.16)}px 'Instrument Serif', serif`; ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(236,228,214,.9)'; ctx.fillText('Yankı ' + (ghostRuns.length), W - 30, H/2 - Math.min(W, H)*.08);
+    }
+  }
+  if (fx.flash > 0){ ctx.fillStyle = `rgba(255,236,224,${fx.flash})`; ctx.fillRect(0, 0, W, H); }
+  ctx.fillStyle = vign; ctx.fillRect(0, 0, W, H);
+  // film grain
+  ctx.globalAlpha = .045; ctx.globalCompositeOperation = 'overlay';
+  ctx.fillStyle = ctx.createPattern(grain, 'repeat');
+  ctx.save(); ctx.translate(Math.random()*160, Math.random()*160); ctx.fillRect(-160, -160, W + 320, H + 320); ctx.restore();
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+
+// =====================================================================
+makeTextures(); resize();
+openMenu();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
