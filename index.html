@@ -500,7 +500,7 @@ const now = () => performance.now();
 // =====================================================================
 //  level flow
 // =====================================================================
-function unlocked(i){ return i === 0 || !!prog.solved[i-1] || !!prog.solved[i]; }
+function unlocked(i){ return true; }   // every level is open: jump anywhere from the menu
 
 function loadLevel(i, showIntro = true){
   li = i; def = LEVELS[i]; L = parse(def);
